@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Music Key Detector</title>
+  <script src="https://cdn.jsdelivr.net/npm/meyda/dist/web/meyda.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f0f4f8;
+      color: #333;
+      text-align: center;
+      padding: 20px;
+    }
+    input, button {
+      padding: 10px;
+      font-size: 1rem;
+      margin: 10px;
+    }
+    video, canvas {
+      max-width: 100%;
+      margin-top: 20px;
+    }
+    #progressions {
+      text-align: left;
+      max-width: 500px;
+      margin: 20px auto;
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    }
+  </style>
+</head>
+<body>
+
+  <h1>🎤 Real-Time Music Key Detector 🎹</h1>
+  <p>Sing into the microphone or upload a video/audio file to detect the key.</p>
+
+  <button id="start-mic">Start Singing</button>
+  <button id="stop-mic">Stop</button>
+  <input type="file" id="file-input" accept="audio/*, video/*">
+
+  <p><strong>Detected Key:</strong> <span id="detected-key">N/A</span></p>
+
+  <div id="progressions">
+    <h3>Chord Progressions</h3>
+    <p><strong>Sad:</strong> <span id="sad-progression">N/A</span></p>
+    <p><strong>Lively:</strong> <span id="lively-progression">N/A</span></p>
+    <p><strong>Worship/Church:</strong> <span id="worship-progression">N/A</span></p>
+  </div>
+
+  <button onclick="restartSession()">Restart Session</button>
+
+  <script>
+    let audioContext, micStream, analyser;
+
+    const keyChords = {
+      'C': { sad: ['C', 'Am', 'F', 'G'], lively: ['C', 'G', 'Am', 'F'], worship: ['C', 'F', 'G', 'Am'] },
+      'C#': { sad: ['C#', 'A#m', 'F#', 'G#'], lively: ['C#', 'G#', 'A#m', 'F#'], worship: ['C#', 'F#', 'G#', 'A#m'] },
+      'D': { sad: ['D', 'Bm', 'G', 'A'], lively: ['D', 'A', 'Bm', 'G'], worship: ['D', 'G', 'A', 'Bm'] },
+      'A#': { sad: ['A#', 'Cm', 'G#', 'D#'], lively: ['A#', 'D#', 'Cm', 'F'], worship: ['A#', 'F', 'D#', 'Cm'] },
+      'F': { sad: ['F', 'Dm', 'Bb', 'C'], lively: ['F', 'C', 'Dm', 'Bb'], worship: ['F', 'Bb', 'C', 'Dm'] },
+    };
+
+    const noteNames = [
+      'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'
+    ];
+
+    // Start microphone analysis
+    document.getElementById('start-mic').addEventListener('click', async () => {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const source = audioContext.createMediaStreamSource(micStream);
+      analyser = Meyda.createMeydaAnalyzer({
+        audioContext: audioContext,
+        source: source,
+        bufferSize: 512,
+        featureExtractors: ['chroma'],
+        callback: features => detectKey(features.chroma)
+      });
+      analyser.start();
+    });
+
+    // Stop microphone analysis
+    document.getElementById('stop-mic').addEventListener('click', () => {
+      if (micStream) micStream.getTracks().forEach(track => track.stop());
+      if (audioContext) audioContext.close();
+      document.getElementById('detected-key').innerText = 'N/A';
+    });
+
+    // File input analysis
+    document.getElementById('file-input').addEventListener('change', async function(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const fileReader = new FileReader();
+      fileReader.readAsArrayBuffer(file);
+      fileReader.onload = async () => {
+        const audioBuffer = await audioContext.decodeAudioData(fileReader.result);
+        const source = audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioContext.destination);
+        analyser = Meyda.createMeydaAnalyzer({
+          audioContext: audioContext,
+          source: source,
+          bufferSize: 512,
+          featureExtractors: ['chroma'],
+          callback: features => detectKey(features.chroma)
+        });
+        analyser.start();
+        source.start();
+      };
+    });
+
+    // Key detection logic and chord progression display
+    function detectKey(chroma) {
+      let maxIndex = chroma.indexOf(Math.max(...chroma));
+      let detectedKey = noteNames[maxIndex];
+      document.getElementById('detected-key').innerText = detectedKey + ' Major';
+
+      if (keyChords[detectedKey]) {
+        document.getElementById('sad-progression').innerText = keyChords[detectedKey].sad.join(' - ');
+        document.getElementById('lively-progression').innerText = keyChords[detectedKey].lively.join(' - ');
+        document.getElementById('worship-progression').innerText = keyChords[detectedKey].worship.join(' - ');
+      } else {
+        document.getElementById('sad-progression').innerText = 'No progression available';
+        document.getElementById('lively-progression').innerText = 'No progression available';
+        document.getElementById('worship-progression').innerText = 'No progression available';
+      }
+    }
+
+    // Restart session
+    function restartSession() {
+      document.getElementById('detected-key').innerText = 'N/A';
+      document.getElementById('sad-progression').innerText = 'N/A';
+      document.getElementById('lively-progression').innerText = 'N/A';
+      document.getElementById('worship-progression').innerText = 'N/A';
+      document.getElementById('file-input').value = '';
+      if (micStream) micStream.getTracks().forEach(track => track.stop());
+      if (audioContext) audioContext.close();
+    }
+  </script>
+
+</body>
+</html>
+
+
